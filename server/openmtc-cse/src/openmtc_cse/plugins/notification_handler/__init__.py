@@ -8,9 +8,12 @@ from openmtc_onem2m.model import (
     NotificationContentTypeE,
     EventNotificationCriteria,
     NotificationEventTypeE,
+    AggregatedNotification,
 )
 from openmtc_onem2m.transport import OneM2MOperation
 from openmtc_server.Plugin import Plugin
+
+import datetime
 
 
 def get_event_notification_criteria(subscription):
@@ -87,6 +90,8 @@ class NotificationHandler(Plugin):
             "pid": subscription.parentID,
             "enc": get_event_notification_criteria(subscription),
             "sub": subscription,
+            "not": [],                      # notifications
+            "levt": datetime.datetime.now() # last event time
         }
 
     def _handle_subscription_updated(self, subscription, _):
@@ -269,9 +274,39 @@ class NotificationHandler(Plugin):
         except AttributeError:
             pass
 
-        # NOTE: The use of some attributes such as rateLimit, batchNotify and
-        # preSubscriptionNotify is not supported in this release of the
+        # NOTE: The use of some attributes such as rateLimit, `Notify and
+        # preSubscriptionNotify is not supported in this release of the(
         # document.
+
+        try:
+            batch_notify = sub.batchNotify
+            
+            if batch_notify == None:
+                self._send_notification(resource, sub)
+            else:
+                current_time = datetime.datetime.now()
+                notifications = self.subscriptions_info[sub.resourceID]["not"]
+
+                for uri in sub.notificationURI:
+                    notifications.append(
+                        Notification(
+                            notificationEvent=NotificationEventC(
+                                representation=resource
+                            ),
+                            subscriptionReference=self._get_subscription_reference(uri, sub.path),
+                            creator=sub.creator
+                        )
+                    )
+
+                if int(batch_notify.number) <= len(notifications) or \
+                        int(batch_notify.duration) <= int((current_time - self.subscriptions_info[sub.resourceID]["levt"]).seconds):
+                    aggregated_notification = AggregatedNotification(**{"notification": notifications})
+
+                    self._send_notification(aggregated_notification, sub)
+                    self.subscriptions_info[sub.resourceID]["levt"] = current_time
+                    self.subscriptions_info[sub.resourceID]["not"] = []
+        except AttributeError:
+            pass
 
         # Step 3.0 The Originator shall check the notification and reachability
         # schedules, but the notification schedules may be checked in different
@@ -343,30 +378,37 @@ class NotificationHandler(Plugin):
         # while storing Notify request primitives locally. When the Receiver as
         # a transit CSE needs to send pending Notify request primitives, it
         # shall send the latest Notify request primitive.
-        self._send_notification(resource, sub)
+
+    def _get_subscription_reference(self, to, path):
+        if to.startswith('//'):
+            return self._abs_cse_id + '/' + path
+        elif to.startswith('/'):
+            return self._rel_cse_id + '/' + path
+        else:
+            return path
 
     def _send_notification(self, resource, sub):
         self.logger.debug("sending notification for resource: %s", resource)
 
-        def get_subscription_reference(to, path):
-            if to.startswith('//'):
-                return self._abs_cse_id + '/' + path
-            elif to.startswith('/'):
-                return self._rel_cse_id + '/' + path
-            else:
-                return path
-
-        for uri in sub.notificationURI:
-            self.api.handle_onem2m_request(OneM2MRequest(
-                op=OneM2MOperation.notify,
-                to=uri,
-                pc=Notification(
-                    notificationEvent=NotificationEventC(
-                        representation=resource
+        if isinstance(resource, AggregatedNotification):
+            for uri in sub.notificationURI:
+                self.api.handle_onem2m_request(OneM2MRequest(
+                    op=OneM2MOperation.notify,
+                    to=uri,
+                    pc=resource
+                ))
+        else:
+            for uri in sub.notificationURI:
+                self.api.handle_onem2m_request(OneM2MRequest(
+                    op=OneM2MOperation.notify,
+                    to=uri,
+                    pc=Notification(
+                        notificationEvent=NotificationEventC(
+                            representation=resource
+                        ),
+                        subscriptionReference=self._get_subscription_reference(uri, sub.path),
+                        # TODO(rst): check if this is the sub creator or the creator of the notification
+                        # TODO          in this case the CSE
+                        creator=sub.creator
                     ),
-                    subscriptionReference=get_subscription_reference(uri, sub.path),
-                    # TODO(rst): check if this is the sub creator or the creator of the notification
-                    # TODO          in this case the CSE
-                    creator=sub.creator
-                ),
-            ))
+                ))

@@ -7,6 +7,8 @@ from openmtc_onem2m.model import (
     EventNotificationCriteria,
     NotificationEventTypeE,
     Subscription,
+    BatchNotify,
+    AggregatedNotification,
 )
 from openmtc_onem2m.serializer import get_onem2m_decoder
 from urlparse import urlparse
@@ -96,11 +98,18 @@ class NotificationManager(LoggerMixin):
         self._init = nop
 
     def register_callback(self, func, sur):
+        # Not as beautifull as it should be but it works ......
         self.callbacks[sur] = func if len(getargspec(func)[0]) > 1 \
-            else lambda _, **notification: func(notification['rep'])
+        else lambda _, **notification: func(notification['not']) if 'not' in notification.keys() \
+        else func(notification['rep'])
 
     def _handle_callback(self, originator, **notification):
-        sur = notification.pop('sur')
+        try:
+            n = notification["not"][0]
+        except KeyError:
+            n = notification
+
+        sur = n.pop('sur')
         sur = self._normalize_path(sur)
 
         try:
@@ -124,7 +133,7 @@ class NotificationManager(LoggerMixin):
     def get_expiration_time(self):
         return None
 
-    def subscribe(self, path, func, filter_criteria=None, expiration_time=None,
+    def subscribe(self, path, func, filter_criteria=None, sub_options=None, expiration_time=None,
                   notification_types=(NotificationEventTypeE.updateOfResource,)):
         self._init()
 
@@ -136,6 +145,7 @@ class NotificationManager(LoggerMixin):
             notificationURI=[self.mapper.originator],
             expirationTime=expiration_time or self.get_expiration_time(),
             eventNotificationCriteria=event_notification_criteria,
+            batchNotify=BatchNotify(**sub_options["batchNotify"] or None)
         ))
 
         reference = self._normalize_path(subscription.subscriberURI or subscription.path)
@@ -237,8 +247,18 @@ class HttpNotificationHandler(BaseNotificationHandler):
             assert 'x-m2m-ri' in request.headers, 'Missing request id'
             assert 'content-type' in request.headers, 'Unspecified content type'
 
-            notification = self._unpack_notification(
-                get_onem2m_decoder(request.content_type).decode(request.data))
+            notification = {}
+            notification_type = get_onem2m_decoder(request.content_type).decode(request.data)
+
+            if isinstance(notification_type, AggregatedNotification):
+                notification["not"] = []
+
+                for n in notification_type.values["notification"]:
+                    notification["not"].append(
+                        self._unpack_notification(n)
+                    )
+            else:
+                notification = self._unpack_notification(notification_type)
             self._callback(request.headers['x-m2m-origin'], **notification)
 
             return Response(
