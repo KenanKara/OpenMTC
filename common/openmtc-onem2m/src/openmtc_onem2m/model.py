@@ -741,8 +741,8 @@ class BatchNotify(OneM2MEntity):
     """ See TS-004 6.3.5.6
         See TS-004 Table 6.3.5.6-1"""
     
-    number = Attribute(str)
-    duration = Attribute(str)
+    number = Attribute(int)
+    duration = Attribute(int)
 
 
 class RateLimit(OneM2MEntity):

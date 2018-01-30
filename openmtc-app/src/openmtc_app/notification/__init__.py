@@ -141,12 +141,19 @@ class NotificationManager(LoggerMixin):
         event_notification_criteria.notificationEventType = (
             event_notification_criteria.notificationEventType or list(notification_types))
 
-        subscription = self.mapper.create(path, Subscription(
-            notificationURI=[self.mapper.originator],
-            expirationTime=expiration_time or self.get_expiration_time(),
-            eventNotificationCriteria=event_notification_criteria,
-            batchNotify=BatchNotify(**sub_options["batchNotify"] or None)
-        ))
+        params = {
+            "notificationURI": self.mapper.originator,
+            "expirationTime": expiration_time or self.get_expiration_time(),
+            "eventNotificationCriteria": event_notification_criteria,
+        }
+
+        if sub_options:
+            try:
+                params["batchNotify"] = BatchNotify(**sub_options["batchNotify"])
+            except KeyError:
+                pass
+
+        subscription = self.mapper.create(path, Subscription(**params))
 
         reference = self._normalize_path(subscription.subscriberURI or subscription.path)
         self.register_callback(func, reference)
