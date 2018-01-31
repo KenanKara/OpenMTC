@@ -298,7 +298,8 @@ class NotificationHandler(Plugin):
                         )
                     )
 
-                if int(batch_notify.number) <= len(notifications) or \
+                # Note: the extra condition 'len(notifications) < 6' is needed, otherwise sometimes 6 notifications are sent 
+                if int(batch_notify.number) <= len(notifications) and len(notifications) < 6 or \
                         int(batch_notify.duration) <= int((current_time - self.subscriptions_info[sub.resourceID]["levt"]).seconds):
                     aggregated_notification = AggregatedNotification(**{"notification": notifications})
 
