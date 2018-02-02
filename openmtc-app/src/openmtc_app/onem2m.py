@@ -576,6 +576,7 @@ class XAE(LoggerMixin):
             'expiration_time': expiration_time,
             'sub_options': sub_options,
         }
+
         self.add_subscription_handler(path, handler, **params)
         # self.notification_manager.subscribe(path, handler, **params)
         if delete_handler:
@@ -604,6 +605,7 @@ class XAE(LoggerMixin):
         :param expiration_time:
         :return:
         """
+
         def subscribe():
             return self.notification_manager.subscribe(
                 path,

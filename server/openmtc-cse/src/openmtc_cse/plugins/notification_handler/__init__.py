@@ -90,8 +90,9 @@ class NotificationHandler(Plugin):
             "pid": subscription.parentID,
             "enc": get_event_notification_criteria(subscription),
             "sub": subscription,
-            "not": [],                      # notifications
-            "levt": datetime.datetime.now() # last event time
+            "not": [],                       # notifications
+            "levt": datetime.datetime.now(), # last event time
+            "sno": 0                         # sent notifications (ratelimit)
         }
 
     def _handle_subscription_updated(self, subscription, _):
@@ -282,7 +283,7 @@ class NotificationHandler(Plugin):
             batch_notify = sub.batchNotify
             
             if batch_notify == None:
-                self._send_notification(resource, sub)
+                pass
             else:
                 current_time = datetime.datetime.now()
                 notifications = self.subscriptions_info[sub.resourceID]["not"]
@@ -308,6 +309,36 @@ class NotificationHandler(Plugin):
                     self.subscriptions_info[sub.resourceID]["not"] = []
         except AttributeError:
             pass
+
+        try:
+            ratelimit = sub.rateLimit
+
+            if ratelimit == None:
+                pass
+            else:
+                notification_resources = self.subscriptions_info[sub.resourceID]["not"]
+
+                for uri in sub.notificationURI:
+                    notification_resources.append(resource)
+
+                for i in range(len(notification_resources)):
+                    current_time = datetime.datetime.now()
+
+                    if int((current_time - self.subscriptions_info[sub.resourceID]["levt"]).seconds) <= int(ratelimit.timeWindow):
+                        if self.subscriptions_info[sub.resourceID]["sno"] <= int(ratelimit.maxNrOfNotify):
+                            self._send_notification(notification_resources.pop(0), sub)
+                            self.subscriptions_info[sub.resourceID]["sno"] += 1
+                        else:
+                            break
+                    else:
+                        self.subscriptions_info[sub.resourceID]["levt"] = current_time
+                        self.subscriptions_info[sub.resourceID]["sno"] = 0                        
+                        break
+        except AttributeError:
+            pass
+        
+        if not ratelimit or batch_notify:
+            self._send_notification(resource, sub)
 
         # Step 3.0 The Originator shall check the notification and reachability
         # schedules, but the notification schedules may be checked in different

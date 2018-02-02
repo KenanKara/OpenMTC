@@ -8,6 +8,7 @@ from openmtc_onem2m.model import (
     NotificationEventTypeE,
     Subscription,
     BatchNotify,
+    RateLimit,
     AggregatedNotification,
 )
 from openmtc_onem2m.serializer import get_onem2m_decoder
@@ -151,8 +152,11 @@ class NotificationManager(LoggerMixin):
             try:
                 params["batchNotify"] = BatchNotify(**sub_options["batchNotify"])
             except KeyError:
-                pass
-
+                try:
+                    params["rateLimit"] = RateLimit(**sub_options["rateLimit"])
+                except KeyError:
+                    pass
+        
         subscription = self.mapper.create(path, Subscription(**params))
 
         reference = self._normalize_path(subscription.subscriberURI or subscription.path)
