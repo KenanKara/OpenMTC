@@ -337,7 +337,7 @@ class NotificationHandler(Plugin):
         except AttributeError:
             pass
         
-        if not ratelimit or batch_notify:
+        if not ratelimit and not batch_notify:
             self._send_notification(resource, sub)
 
         # Step 3.0 The Originator shall check the notification and reachability
